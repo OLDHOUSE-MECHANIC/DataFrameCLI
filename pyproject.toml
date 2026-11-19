@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dfcli-tool"
+version = "0.1.0"
+description = "A small, scriptable CLI for tabular data with a pipeline command language"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+  "pandas",
+  "matplotlib",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+dfcli = "dfcli.cli:main"
+
+[tool.setuptools]
+packages = ["dfcli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

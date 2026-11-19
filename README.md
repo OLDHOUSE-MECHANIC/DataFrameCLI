@@ -1,106 +1,132 @@
-# DataFrameCLI
+# dfcli
 
-This project started as a simple experiment to make working with Pandas a little less intimidating and a lot more interactive.
-
-**DataFrameCLI** is a Python-based command-line tool that lets you create, modify, explore, and visualize Pandas DataFrames through plain-text commands. Instead of writing Pandas code for every small task, you can talk to the program and it does hard work.
-pretty cool, right?
-
----
-
-## What can it do?
-
-Once the program is running, you can:
-
-* Create Pandas **Series** and **DataFrames** from scratch
-* Add, edit, or delete rows and columns
-* Change individual data values
-* Visualize your data using:
-
-  * Bar charts
-  * Line graphs
-* Save your DataFrame as a CSV file
-* Load an existing CSV file back into the program
-* View your data as a table or graph at any time
-
-Everything happens interactively through the terminal, with prompts guiding you along the way.
-
----
-
-## Why this project exists
-
-When learning Pandas, a lot of beginners struggle with:
-
-* Remembering syntax
-* Understanding how DataFrames actually change
-* Quickly visualizing what their data looks like
-
-This project was built to solve exactly that. It turns common Pandas operations into a conversational CLI experience, making it easier to experiment, make mistakes, and learn by doing.
-
----
-
-## Tech stack
-
-* **Python**
-* **Pandas** for data handling
-* **NumPy** for numerical operations
-* **Matplotlib** for data visualization
-
----
-
-## Installation
-
-Clone the repository and install the dependencies:
+A small, scriptable command-line tool for tabular data. It started life as an
+interactive pandas demo in a single `main.py`; it is now a real package with a
+pipeline command language, safe expressions, undo/history, and a backend-neutral
+core.
 
 ```bash
-git clone https://github.com/OLDHOUSE-MECHANIC/DataFrameCLI.git
-cd DataFrameCLI
-pip install -r requirements.txt
+dfcli run 'load sales.csv | filter amount > 100 and region == "West" | groupby region sum:amount | show'
 ```
 
----
+## Why the rewrite
 
-## Running the program
+The old version matched commands with `if 'graph' in query`, mutated the live
+DataFrame while plotting, and could not be scripted. `dfcli` replaces that with:
 
-Start the application with:
+- a real parser: stages separated by `|`, with quote-aware splitting
+- a safe expression language (AST whitelist, no `eval`)
+- immutable table operations, which makes `undo` and replay possible
+- an `explain` command that prints the equivalent pandas code
+- a package layout with tests instead of one 300-line script
+
+## Install
 
 ```bash
-python main.py
+pip install -e .
 ```
 
-You’ll be greeted with a prompt asking what you’d like to do. From there, you can type things like:
+Or run directly from the repo without installing:
 
-* `create dataframe`
-* `add row`
-* `delete column`
-* `show graph`
-* `save`
-* `load`
-* `quit`
+```bash
+python3 -m dfcli run 'load data.csv | show 5'
+```
 
-The program will ask follow-up questions whenever it needs more information.
+`pandas` and `matplotlib` are only imported when you use `explain`-grade
+export/plot paths; the CSV engine itself uses the standard library.
 
----
+## Usage
 
-## Example use case
+### One-shot pipelines
 
-You might start by creating a DataFrame, add some rows of data, tweak a few values, visualize the result as a bar chart, and then save it to a CSV — all without writing a single Pandas command yourself.
+```bash
+dfcli run 'load sales.csv | show 5'
+dfcli run 'load sales.csv | filter amount > 100 | add tax=amount * 0.1 | select region, amount, tax | save taxed.csv'
+```
 
----
+### Scripts from stdin
 
-## Current limitations
+```bash
+cat clean.dfcli | dfcli run
+```
 
-This is an early-stage project and intentionally kept simple. Some things that could be improved:
+Example `clean.dfcli`:
 
-* Better input validation
-* Cleaner command parsing
-* More visualization options
-* Modularizing the codebase
-* Adding tests
+```text
+load raw.csv
+filter status == "ok"
+drop temp_column
+groupby region sum:amount count:id
+save clean.csv
+explain
+```
 
----
+### Interactive REPL
 
-## License
+```bash
+dfcli repl
+```
 
-This project is open-source and released under the MIT License.
+```text
+dfcli> load sales.csv
+dfcli> filter amount > 10 | head 3 | show
+dfcli> undo
+dfcli> explain
+dfcli> exit
+```
 
-Feel free to explore, modify, and build on top of it.
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `load FILE.csv [as NAME]` | read a CSV into a named table |
+| `save FILE.csv` | write the current table to CSV |
+| `show [N]` / `info` | print rows / schema |
+| `list` / `use NAME` | manage multiple loaded tables |
+| `select COL...` / `drop COL...` / `rename OLD=NEW...` | shape columns |
+| `filter EXPR` | keep rows where the expression is true |
+| `add NAME=EXPR` / `set NAME=EXPR` | computed columns |
+| `sort COL [--desc]` / `distinct [COL...]` | order and deduplicate |
+| `groupby COL FUNC:COL[:ALIAS]...` | aggregations (`sum`, `count`, `mean`, `min`, `max`) |
+| `head [N]` / `tail [N]` | keep first/last rows |
+| `plot bar\|line\|... [X] [Y] [--out FILE.png]` | save a chart |
+| `explain` / `history` / `undo` | inspect and rewind the session |
+| `help [COMMAND]` | built-in docs |
+
+Expressions support comparisons, boolean `and`/`or`, arithmetic, and literals.
+Function calls, attribute access, and imports are rejected.
+
+## Architecture
+
+```text
+dfcli/
+  cli.py         argparse entry point: run / repl / commands
+  parser.py      quote-aware pipeline splitter + stage parser
+  expr.py        safe AST expression parser/evaluator
+  table.py       immutable columns + rows representation
+  ops.py         pure transformations (select, filter, groupby, ...)
+  io.py          stdlib CSV engine, optional pandas conversion
+  plots.py       lazy matplotlib plotting
+  session.py     current table, history, code trace, undo stack
+  commands.py    command registry and handlers
+tests/           parser, expression, ops, and session tests
+```
+
+The `main.py` file remains as a two-line compatibility shim; the tool itself is
+no longer a single script.
+
+## Development
+
+```bash
+pip install -e '.[dev]'
+pytest -q
+```
+
+## Roadmap
+
+- joins between named tables
+- Parquet/JSON backends and a swappable Polars/DuckDB engine
+- script files with variables and comments
+- config file for default output/plot style
+- plugin command discovery
+- optional Textual TUI on top of the same core
